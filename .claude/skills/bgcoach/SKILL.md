@@ -12,12 +12,12 @@ doesn't exist yet, run `./run.sh` once (or `uv venv -p 3.13 .venv && uv pip inst
 ## Start the app
 
 ```bash
-PORT=8000 ./run.sh        # long-running: start it in the background
-curl -s localhost:8000/api/stats | head -c 300
+./run.sh                  # port 8765; PORT=... to change        # long-running: start it in the background
+curl -s 127.0.0.1:8765/api/stats | head -c 300
 ```
 
 `run.sh` loads `.env` (see `.env.example`) and builds a 2000-position database on
-first run (~1.5 min). Use another `PORT` if 8000 is taken. For experiments, point
+first run (~1.5 min). `run.sh` refuses to start if the port answers on IPv4 or IPv6 (Docker often holds 8000 on IPv6); use another `PORT` then. For experiments, point
 `BGCOACH_DB` at a copy made with the backup API, never `cp` (WAL mode):
 
 ```bash

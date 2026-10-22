@@ -80,7 +80,7 @@ cd bgcoach
 ./run.sh
 ```
 
-Open <http://localhost:8000>. The first run creates `.venv`, installs the dependencies and
+Open <http://127.0.0.1:8765>. The first run creates `.venv`, installs the dependencies and
 generates a starter database of 2,000 positions (about 1.5 minutes). For more positions:
 
 ```bash
@@ -92,7 +92,7 @@ Without uv:
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python server/generate.py --positions 2000
-.venv/bin/uvicorn app:app --app-dir server --port 8000
+.venv/bin/uvicorn app:app --app-dir server --port 8765
 ```
 
 ## Using it
@@ -219,7 +219,7 @@ Copy `.env.example` to `.env`; `run.sh` loads it.
 | Variable | Default | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | unset | Enables Claude-written explanations (otherwise templates) |
-| `PORT` | `8000` | Port for `run.sh` |
+| `PORT` | `8765` | Port for `run.sh` (it refuses to start if the port is taken) |
 | `BGCOACH_DB` | `data/bgcoach.sqlite` | Database file |
 
 Training constants live in `server/srs.py` (`MAX_REVIEWS_PER_DAY`, `NEW_PER_DAY`,

@@ -11,12 +11,12 @@ engine module + SQLite), a no-build vanilla JS single-page app with an SVG board
 ## Commands
 
 ```bash
-./run.sh                                                   # venv + starter DB on first run, serves :8000
+./run.sh                                                   # venv + starter DB on first run, serves 127.0.0.1:8765
 .venv/bin/python -m pytest -q                              # all tests (~5 s)
 node --check web/app.js                                    # the only "build" check for the frontend
 .venv/bin/python server/generate.py --positions 5000       # add self-play positions
 .venv/bin/python server/importer.py match.mat --player Me  # import a match from the CLI
-.venv/bin/uvicorn app:app --app-dir server --port 8000     # server without run.sh
+.venv/bin/uvicorn app:app --app-dir server --port 8765     # server without run.sh
 ```
 
 Set `BGCOACH_DB=/tmp/x.sqlite` to work against a scratch database.
