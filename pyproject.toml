@@ -1,0 +1,19 @@
+[project]
+name = "bgcoach"
+version = "0.1.0"
+description = "Backgammon checker-play trainer: gnubg-analysed positions, your own matches, spaced repetition and Persian explanations."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "gnubg==1.1.0a16",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "anthropic>=2.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

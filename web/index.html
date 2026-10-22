@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>bgcoach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" data-nav="train">bgcoach</a>
+    <nav>
+      <a href="/" data-nav="train">Train</a>
+      <a href="/progress" data-nav="progress">Progress</a>
+      <a href="/import" data-nav="import">Import</a>
+    </nav>
+    <div class="spacer"></div>
+    <span class="due" id="due" title="Missed positions due for review"></span>
+    <select id="kind" aria-label="Position type">
+      <option value="">All positions</option>
+      <option value="opening">Opening</option>
+      <option value="middlegame">Middlegame</option>
+      <option value="backgame">Back game</option>
+      <option value="backgame-opp">Vs. back game</option>
+      <option value="race">Race</option>
+      <option value="bearoff">Bear-off</option>
+    </select>
+  </header>
+
+  <main id="train" class="view">
+    <section class="board-wrap">
+      <div class="meta" id="meta"></div>
+      <svg id="board" viewBox="0 0 828 596" role="img" aria-label="Backgammon board"></svg>
+      <div class="controls">
+        <button id="undo" class="ghost" title="Undo (Backspace)">Undo</button>
+        <span class="hint" id="hint"></span>
+        <button id="submit" class="primary" title="Submit (Enter)" disabled>Submit</button>
+        <button id="start" class="ghost" title="Show the starting position (hold S)" hidden>Start position</button>
+        <button id="next" class="primary" title="Next (N or Space)" hidden>Next position →</button>
+      </div>
+    </section>
+    <aside class="panel" id="panel"></aside>
+  </main>
+
+  <main id="progress" class="view" hidden></main>
+
+  <main id="import" class="view" hidden>
+    <div class="box">
+      <h3>Import your matches</h3>
+      <p class="cap">Upload a match file from GNU Backgammon, eXtreme Gammon, Backgammon Galaxy or Heroes
+        (<code>.mat</code>, <code>.txt</code> or gnubg <code>.sgf</code>). Every checker play of yours is analysed,
+        and the ones that lost equity become review cards — the biggest mistakes first, <span id="new-cap">a few</span> per day.</p>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".mat,.txt,.sgf" hidden>
+        <span>Drop a match file here, or <u>choose one</u></span>
+      </label>
+      <div id="import-step"></div>
+    </div>
+    <div id="import-result"></div>
+    <div class="box"><h3>Imported matches</h3><div id="import-list"></div></div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
