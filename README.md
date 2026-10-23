@@ -109,9 +109,19 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | See any ranked move on the board | hover it (click to pin) |
 | See the starting position | **Start position**, click the dice, or hold <kbd>S</kbd> |
 | Next position | **Next position**, <kbd>N</kbd> or <kbd>Space</kbd> |
+| Choose what to play | **Mixed** / **Reviews** / **New** at the top |
 
-You are always white, moving towards your home board at the bottom right. The filter at the
-top right limits training to one kind of position (e.g. bear-offs only).
+You are always white, moving towards your home board at the bottom right. At the top you
+choose what to play:
+
+- **Mixed** (default): positions you missed before and new ones take turns, so reviews never
+  block new positions.
+- **Reviews**: only positions you missed before (and queued mistakes from imported matches),
+  without the daily caps. The number on the button is how many are waiting.
+- **New**: only positions you haven't seen. Due reviews just wait; skipping them costs nothing.
+
+Switching mode in the middle of a position drops it without counting it. The filter next to
+it limits training to one kind of position (e.g. bear-offs only).
 
 <img src="docs/why.png" alt="The result panel: error, engine ranking with equities, and the Why section with a Persian explanation and a table of facts for both plays" width="900">
 
@@ -181,9 +191,11 @@ A position becomes a card the first time you don't play the best move.
 | Right after that | interval × ease (starts at 2.5) |
 | Right but slower than 30 s | shorter interval, ease −0.15 |
 
-`/api/next` serves: missed cards that are due → due reviews, biggest error first (up to 100 a
-day) → queued mistakes from imported matches, biggest first (up to 20 a day) → a random position
-you haven't seen. A card counts as learned once its interval reaches 3 weeks.
+Cards are picked in this order: missed cards that are due → due reviews, biggest error first
+(up to 100 a day) → queued mistakes from imported matches, biggest first (up to 20 a day). In
+**Mixed** mode a card and a new position alternate; **Reviews** serves only cards and ignores the
+daily caps; **New** serves only positions you haven't seen. A card counts as learned once its
+interval reaches 3 weeks.
 
 ### Match import
 
@@ -242,7 +254,7 @@ All endpoints take an optional `X-User` header (default `me`).
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/next?kind=` | Next position: due card, queued import or a new one |
+| `GET` | `/api/next?mode=&kind=&prev=` | Next position. `mode`: `mixed` (default), `review`, `new`; `prev`: mode of the position just played |
 | `GET` | `/api/position/{id}` | A specific position (practice mode) |
 | `POST` | `/api/answer` | `{position_id, result: {me, opp}, ms}` → ranking, error, card schedule |
 | `GET` | `/api/explain/{id}?chosen=` | Facts + Persian explanation for the chosen move index |

@@ -66,10 +66,12 @@ nav a {
 }
 nav a.on { background: var(--bg); color: var(--ink); font-weight: 600; }
 .spacer { flex: 1; }
-.due {
-  font-size: 13px; color: var(--ink-2); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
-}
-.due.has { color: var(--warn); border-color: currentColor; font-weight: 600; }
+.modes { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.modes button { border: 0; border-radius: 0; background: transparent; padding: 6px 12px; color: var(--ink-2); font-size: 14px; }
+.modes button + button { border-left: 1px solid var(--line); }
+.modes button.on { background: var(--bg); color: var(--ink); font-weight: 600; }
+.modes .count:not(:empty) { margin-left: 4px; font-size: 12px; padding: 0 6px; border-radius: 999px; background: var(--line); color: var(--ink-2); }
+.modes .count.has { background: var(--warn); color: #1d1d1b; font-weight: 700; }
 select {
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
 }
@@ -78,7 +80,7 @@ select {
 .view[hidden] { display: none !important; }
 #train { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
 @media (max-width: 960px) { #train { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .view { padding: 16px; } .top { padding: 10px 16px; gap: 12px; } nav a { padding: 6px 8px; } }
+@media (max-width: 560px) { .view { padding: 16px; } .top { padding: 10px 16px; gap: 12px; flex-wrap: wrap; } nav a { padding: 6px 8px; } .modes button { padding: 6px 8px; } }
 
 .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; min-height: 26px; }
 .tag {

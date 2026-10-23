@@ -17,7 +17,11 @@
       <a href="/import" data-nav="import">Import</a>
     </nav>
     <div class="spacer"></div>
-    <span class="due" id="due" title="Missed positions due for review"></span>
+    <div class="modes" id="modes" role="group" aria-label="What to play">
+      <button data-mode="mixed" title="Reviews and new positions, alternating">Mixed</button>
+      <button data-mode="review" title="Only positions you missed before">Reviews <span class="count" id="due"></span></button>
+      <button data-mode="new" title="Only positions you haven't seen">New</button>
+    </div>
     <select id="kind" aria-label="Position type">
       <option value="">All positions</option>
       <option value="opening">Opening</option>

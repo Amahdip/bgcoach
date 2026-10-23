@@ -291,13 +291,27 @@ function load(pos) {
   render();
 }
 
+// What /api/next serves: "mixed" (reviews and new positions alternate), "review", or "new".
+let MODE = store.get("bgcoach-mode", "mixed");
+
+function setMode(mode) {
+  MODE = mode;
+  store.set("bgcoach-mode", mode);
+  document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+}
+
 async function nextPosition() {
+  const params = new URLSearchParams({ mode: MODE });
+  if ($("#kind").value) params.set("kind", $("#kind").value);
+  if (S.pos?.mode) params.set("prev", S.pos.mode);
   try {
-    const kind = $("#kind").value;
-    load(await api("/api/next" + (kind ? `?kind=${encodeURIComponent(kind)}` : "")));
+    load(await api("/api/next?" + params));
   } catch (e) {
     S.pos = null; $("#board").innerHTML = ""; $("#meta").innerHTML = "";
-    $("#panel").innerHTML = `<h2>Nothing to show</h2><p>${e.message}</p>`;
+    const msg = esc(e.message).replace(/due (\d{4}-\d\d-\d\dT[\d:]+\+00:00)/, (_, iso) => "due " + dueText({ due: iso }));
+    $("#panel").innerHTML = `<h2>Nothing to show</h2><p>${msg}</p>` +
+      (MODE === "review" ? `<p><button class="primary" id="go-new">Play new positions</button></p>` : "");
+    $("#go-new")?.addEventListener("click", () => { setMode("new"); nextPosition(); });
     refreshControls();
   }
   refreshDue();
@@ -425,9 +439,10 @@ async function refreshDue() {
   try {
     const s = await api("/api/stats");
     const el = $("#due");
-    const d = s.deck, cards = d.queued + d.learning + d.young + d.learned;
-    el.textContent = d.due ? `${d.due} due for review` : d.queued ? `${d.queued} queued` : `${cards} in review deck`;
-    el.classList.toggle("has", d.due > 0);
+    const d = s.deck, waiting = d.due + d.queued;
+    el.textContent = waiting || "";
+    el.title = `${d.due} due, ${d.queued} queued from matches`;
+    el.classList.toggle("has", waiting > 0);
     return s;
   } catch { return null; }
 }
@@ -660,6 +675,14 @@ $("#submit").addEventListener("click", submit);
 $("#next").addEventListener("click", nextPosition);
 $("#start").addEventListener("click", toggleStart);
 $("#kind").value = store.get("bgcoach-kind", "");
+setMode(MODE);
+document.querySelectorAll("#modes button").forEach((b) => b.addEventListener("click", () => {
+  const changed = b.dataset.mode !== MODE;
+  setMode(b.dataset.mode);
+  if ($("#train").hidden) go("train");
+  // Switching mode drops the current position (no penalty: it wasn't answered) and loads one from the new mode.
+  if (changed || !S.pos || S.result) nextPosition();
+}));
 $("#kind").addEventListener("change", () => { store.set("bgcoach-kind", $("#kind").value); nextPosition(); });
 document.addEventListener("keydown", (e) => {
   if ($("#train").hidden || e.target.tagName === "SELECT") return;

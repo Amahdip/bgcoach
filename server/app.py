@@ -72,13 +72,27 @@ def today_counts(user):
     return reviews, introduced
 
 
+MODES = ("mixed", "review", "new")
+CARD_MODES = ("learning", "review", "queued")
+
+
 @app.get("/api/next")
-async def next_position(kind: Optional[str] = None, x_user: Optional[str] = Header(None)):
+async def next_position(kind: Optional[str] = None, mode: str = "mixed", prev: Optional[str] = None,
+                        x_user: Optional[str] = Header(None)):
+    """Next position to play.
+
+    mode=mixed  : due cards and new positions alternate (prev = the mode of the
+                  position just played), so reviews never block new positions.
+    mode=review : only cards (missed, due reviews, queued imports), no daily caps.
+    mode=new    : only positions the user has never seen.
+    """
     user = user_of(x_user)
+    mode = mode if mode in MODES else "mixed"
     with lock:
         kind_sql, kind_args = ("and p.kind = ?", [kind]) if kind in KINDS else ("", [])
         now = srs.iso(srs.now())
         reviews_today, introduced_today = today_counts(user)
+        capped = mode != "review"
 
         def card_query(where, order):
             return conn.execute(
@@ -87,33 +101,51 @@ async def next_position(kind: Optional[str] = None, x_user: Optional[str] = Head
                 [user, *([now] if "?" in where else []), *kind_args],
             ).fetchone()
 
-        # 1. Missed cards that are due again (a day after the miss) come first.
-        card = card_query("c.state = 'learning' and c.due <= ?", "c.due")
-        if card:
-            return position_payload(card, "learning", dict(card))
-        # 2. Due reviews, biggest error first, up to the daily cap.
-        if reviews_today < srs.MAX_REVIEWS_PER_DAY:
-            card = card_query("c.state = 'review' and c.due <= ?", "c.priority desc, c.due")
+        def next_card():
+            # Missed cards that are due again (a day after the miss) come first,
+            # then due reviews (biggest error first), then queued imports.
+            card = card_query("c.state = 'learning' and c.due <= ?", "c.due")
             if card:
-                return position_payload(card, "review", dict(card))
-        # 3. Queued mistakes from imported matches, a few per day.
-        if introduced_today < srs.NEW_PER_DAY:
-            card = card_query("c.state = 'new'", "c.priority desc")
-            if card:
-                return position_payload(card, "queued", dict(card))
+                return position_payload(card, "learning", dict(card))
+            if not capped or reviews_today < srs.MAX_REVIEWS_PER_DAY:
+                card = card_query("c.state = 'review' and c.due <= ?", "c.priority desc, c.due")
+                if card:
+                    return position_payload(card, "review", dict(card))
+            if not capped or introduced_today < srs.NEW_PER_DAY:
+                card = card_query("c.state = 'new'", "c.priority desc")
+                if card:
+                    return position_payload(card, "queued", dict(card))
+            return None
 
-        # 4. A random position the user has never seen.
-        unseen = f"""select p.* from positions p
-                     where not exists (select 1 from attempts a where a.user = ? and a.position_id = p.id)
-                     {kind_sql}"""
-        max_id = conn.execute("select coalesce(max(id), 0) from positions").fetchone()[0]
+        def new_position():
+            unseen = f"""select p.* from positions p
+                         where not exists (select 1 from attempts a where a.user = ? and a.position_id = p.id)
+                         {kind_sql}"""
+            max_id = conn.execute("select coalesce(max(id), 0) from positions").fetchone()[0]
+            start = random.randint(0, max_id)
+            row = conn.execute(unseen + " and p.id >= ? order by p.id limit 1", [user, *kind_args, start]).fetchone()
+            row = row or conn.execute(unseen + " order by p.id limit 1", [user, *kind_args]).fetchone()
+            return position_payload(row, "new") if row else None
 
-        start = random.randint(0, max_id)
-        row = conn.execute(unseen + " and p.id >= ? order by p.id limit 1", [user, *kind_args, start]).fetchone()
-        row = row or conn.execute(unseen + " order by p.id limit 1", [user, *kind_args]).fetchone()
-        if not row:
-            raise HTTPException(404, "No positions left. Run server/generate.py to make more.")
-        return position_payload(row, "new")
+        if mode == "review":
+            pos = next_card()
+            if not pos:
+                nxt = conn.execute(
+                    f"""select min(c.due) from cards c join positions p on p.id = c.position_id
+                        where c.user = ? and c.state != 'new' {kind_sql}""", [user, *kind_args]).fetchone()[0]
+                raise HTTPException(404, "No reviews due right now." + (f" Next one is due {nxt}." if nxt else ""))
+            return pos
+        if mode == "new":
+            order = [new_position]
+        elif prev in CARD_MODES:
+            order = [new_position, next_card]  # just did a review: a new position next
+        else:
+            order = [next_card, new_position]
+        for pick in order:
+            pos = pick()
+            if pos:
+                return pos
+        raise HTTPException(404, "No positions left. Run server/generate.py to make more.")
 
 
 @app.get("/api/position/{position_id}")

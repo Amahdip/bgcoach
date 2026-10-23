@@ -52,8 +52,10 @@ real export fails, add a trimmed copy to `tests/fixtures/` with a test before fi
 
 ## Answer "why did it show me this?"
 
-Order in `/api/next`: due learning cards → due reviews (biggest error first, max
-`srs.MAX_REVIEWS_PER_DAY`) → queued imports (max `srs.NEW_PER_DAY`) → random unseen.
+`/api/next?mode=` picks cards in this order: due learning cards → due reviews (biggest error
+first, max `srs.MAX_REVIEWS_PER_DAY`) → queued imports (max `srs.NEW_PER_DAY`). `mixed` (default)
+alternates a card and an unseen position (using `prev`), `review` serves only cards with no caps,
+`new` only unseen positions. The mode is chosen in the header and kept in localStorage.
 Inspect one user's deck (default user is `me`):
 
 ```bash
