@@ -29,7 +29,7 @@ Set `BGCOACH_DB=/tmp/x.sqlite` to work against a scratch database.
 | `server/generate.py` | Self-play position generator (noisy 0-ply bot, keeps real decisions) |
 | `server/matchfile.py` | `.mat` / `.sgf` parser and replay |
 | `server/importer.py` | Import a match: analyse the user's moves, queue mistakes as cards |
-| `server/srs.py` | Spaced repetition schedule and daily caps |
+| `server/srs.py` | Mistake severity (doubtful / error / blunder), review schedule, daily caps |
 | `server/facts.py` | Measurable facts about a play (shots, points, prime, chances) |
 | `server/explain_fa.py` | Persian explanation from fixed templates (no API) |
 | `server/explain.py` | Persian explanation via the Claude API, cached in `explanations` |

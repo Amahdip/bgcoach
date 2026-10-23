@@ -51,17 +51,19 @@ memory of your mistakes, and with explanations instead of just numbers.
   back game, race or bear-off. Generate as many more as you like (~22 per second).
 - **Fair, comparable analysis.** Every legal move is scored, the top 8 at 2-ply, and any move
   you play outside the top 8 is re-scored at full depth on the spot before your error is computed.
-- **Spaced repetition of your mistakes.** A missed position returns the next day, then after
-  3 days, 7 days, and growing intervals. Nothing comes back the same day, when you would only be
-  recognising the answer. Daily caps keep a big backlog from taking over.
+- **Mistakes graded like gnubg and XG** — doubtful, error, blunder — and **spaced repetition**
+  that treats them differently: a blunder comes back tomorrow and has to be answered right twice
+  in a row, a doubtful play comes back in 3 days. Nothing comes back the same day, when you would
+  only be recognising the answer. Daily caps keep a big backlog from taking over.
 - **Import your own matches** (`.mat` / `.txt` from GNU Backgammon, eXtreme Gammon, Backgammon
   Galaxy, Heroes, and gnubg `.sgf`). Your mistakes are queued for review, biggest first.
 - **"Why" panel in Persian.** Exact facts computed for both plays — hits, blots and how many of
   the opponent's 36 rolls hit them, points made and given up, primes, anchors, winning and gammon
   chances — turned into a short explanation. It works offline from templates, or is written by
   Claude when an API key is configured.
-- **Progress tracking.** Accuracy, average error per day and per position type, review-deck
-  status and a 7-day forecast, recent mistakes one click away from practice.
+- **Progress tracking.** Blunders per 100 moves and average error per day, doubtful / error /
+  blunder counts per position type, review-deck status and a 7-day forecast, recent mistakes one
+  click away from practice.
 - **A board that's quick to use.** Click a checker to play the highlighted die, right-click for
   the other one, click the dice (or press Space) to swap them. After answering, hover any move in
   the ranking to see it on the board — dashed ghosts where checkers left, rings where they
@@ -181,15 +183,20 @@ move list on hundreds of self-play positions.
 
 ### Spaced repetition
 
-A position becomes a card the first time you don't play the best move.
+Every play you make is graded by how much equity it lost, with the thresholds gnubg and
+eXtreme Gammon use. A miss turns the position into a card, and how bad the miss was decides
+how hard it comes back:
 
-| Result | Next time |
-|---|---|
-| Missed (first time or again) | tomorrow, ease −0.2 |
-| Right, 1st time after a miss | in 3 days |
-| Right, 2nd time | in 7 days |
-| Right after that | interval × ease (starts at 2.5) |
-| Right but slower than 30 s | shorter interval, ease −0.15 |
+| Grade | Equity lost | Next time |
+|---|---|---|
+| Best, or close to it | under 0.020 | no card (counts as right) |
+| **Doubtful** | 0.020 – 0.040 | in 3 days, ease −0.1 |
+| **Error** | 0.040 – 0.080 | tomorrow, ease −0.2 |
+| **Blunder** | 0.080 or more | tomorrow, ease −0.3, and two right answers in a row (a day apart) before it is spaced out |
+
+After a miss, right answers give 3 days, then 7 days, then the interval × the ease (which
+starts at 2.5). A right answer slower than 30 s counts as "hard": a shorter interval and
+ease −0.15.
 
 Cards are picked in this order: missed cards that are due → due reviews, biggest error first
 (up to 100 a day) → queued mistakes from imported matches, biggest first (up to 20 a day). In

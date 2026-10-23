@@ -16,7 +16,7 @@ import db
 import matchfile
 import srs
 
-MIN_ERROR = 0.02
+MIN_ERROR = srs.DOUBTFUL
 
 
 class AlreadyImported(Exception):
@@ -91,27 +91,29 @@ def import_match(conn, user, text, filename, player, min_error=MIN_ERROR, plies=
         if loss < min_error:
             continue
 
+        sev = srs.severity(loss) or "doubtful"  # --min-error below 0.02 still makes a (light) card
         pos_id = _position_id(conn, board, dice, analysis, plies)
         conn.execute(
             """insert into attempts (user, position_id, move, move_text, eq_loss, rank, grade, was_review,
                                      source, import_id)
-               values (?, ?, ?, ?, ?, ?, 'again', 0, 'import', ?)""",
-            (user, pos_id, json.dumps(analysis[idx]["move"]), analysis[idx]["text"], loss, idx + 1, import_id),
+               values (?, ?, ?, ?, ?, ?, ?, 0, 'import', ?)""",
+            (user, pos_id, json.dumps(analysis[idx]["move"]), analysis[idx]["text"], loss, idx + 1, sev, import_id),
         )
         origin = f"{title} · game {gi}, move {turn[gi]}"
         conn.execute(
             """insert into cards (user, position_id, due, interval_d, ease, reps, lapses, last_review,
-                                  state, priority, origin)
-               values (?, ?, ?, 0, 2.5, 0, 1, ?, 'new', ?, ?)
+                                  state, priority, origin, last_severity)
+               values (?, ?, ?, 0, 2.5, 0, 1, ?, 'new', ?, ?, ?)
                on conflict(user, position_id) do update set
                  priority = max(cards.priority, excluded.priority),
-                 origin = coalesce(cards.origin, excluded.origin)""",
-            (user, pos_id, now, now, loss, origin),
+                 origin = coalesce(cards.origin, excluded.origin),
+                 last_severity = coalesce(cards.last_severity, excluded.last_severity)""",
+            (user, pos_id, now, now, loss, origin, sev),
         )
         mistakes.append({
             "position_id": pos_id, "game": gi, "move": turn[gi], "dice": f"{dice[0]}{dice[1]}",
             "played": analysis[idx]["text"], "best": analysis[0]["text"], "loss": loss,
-            "kind": bg.classify(board),
+            "kind": bg.classify(board), "severity": sev,
         })
 
     conn.execute(
@@ -127,6 +129,7 @@ def import_match(conn, user, text, filename, player, min_error=MIN_ERROR, plies=
         "decisions": decisions,
         "error_rate": 1000 * total_loss / decisions if decisions else 0,
         "mistakes": sorted(mistakes, key=lambda m: -m["loss"]),
+        "by_severity": {k: sum(m["severity"] == k for m in mistakes) for k in srs.SEVERITIES},
     }
 
 

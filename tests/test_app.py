@@ -37,7 +37,7 @@ def test_wrong_answer_makes_a_card_due_tomorrow():
     pos = run(app.next_position(None, x_user="t1"))
     assert pos["mode"] == "new" and len(pos["legal"]) > 1
     r = run(app.answer(app.Answer(position_id=pos["id"], result=pos["legal"][-1], ms=3000), "t1"))
-    assert r["rank"] > 1 and r["grade"] == "again" and r["eq_loss"] > 0
+    assert r["rank"] > 1 and r["grade"] in ("doubtful", "error", "blunder") and r["severity"] == r["grade"]
     assert r["card"]["state"] == "learning"
     # Not shown again today: the next position is a different, new one.
     nxt = run(app.next_position(None, x_user="t1"))

@@ -1,5 +1,8 @@
 import os
 import sqlite3
+from datetime import datetime, timedelta
+
+import srs
 
 DB_PATH = os.environ.get("BGCOACH_DB", os.path.join(os.path.dirname(__file__), "..", "data", "bgcoach.sqlite"))
 
@@ -82,12 +85,37 @@ create table if not exists explanations (
 );
 """
 
+def _reclassify_cards(conn):
+    """One-off, when severities were introduced: label each card with the
+    severity of its last miss and redo the schedule of cards still waiting
+    after that miss (doubtful -> 3 days after it, blunder -> two-step relearn)."""
+    rows = conn.execute(
+        """select c.user, c.position_id, c.state, c.last_review,
+                  (select a.eq_loss from attempts a where a.user = c.user and a.position_id = c.position_id
+                   and a.rank > 1 order by a.id desc limit 1) loss
+           from cards c"""
+    ).fetchall()
+    for user, pos, state, last, loss in rows:
+        sev = srs.severity(loss) if loss is not None else None
+        if sev is None:
+            continue
+        conn.execute("update cards set last_severity = ? where user = ? and position_id = ?", (sev, user, pos))
+        if state != "learning":
+            continue
+        if sev == "doubtful":
+            due = srs.iso(datetime.fromisoformat(last) + timedelta(days=3))
+            conn.execute("update cards set due = ? where user = ? and position_id = ?", (due, user, pos))
+        elif sev == "blunder":
+            conn.execute("update cards set reps = -1 where user = ? and position_id = ?", (user, pos))
+
+
 # Columns added after the first release; applied once to existing databases.
+# Each entry: (table, column, [SQL strings or callables taking the connection]).
 MIGRATIONS = [
     ("attempts", "source", ["alter table attempts add column source text not null default 'train'"]),
     ("attempts", "import_id", ["alter table attempts add column import_id integer references imports(id) on delete cascade"]),
-    # new = queued (e.g. from an imported match), learning = missed and on the
-    # 10-minute step, review = answered right at least once since the last miss.
+    # new = queued (e.g. from an imported match), learning = missed and not yet
+    # answered right since, review = answered right at least once since the last miss.
     ("cards", "state", ["alter table cards add column state text not null default 'review'",
                         "update cards set state = 'learning' where reps = 0"]),
     ("cards", "priority", ["alter table cards add column priority real not null default 0",  # equity lost
@@ -95,6 +123,8 @@ MIGRATIONS = [
     ("cards", "introduced_at", ["alter table cards add column introduced_at text",
                                 "update cards set introduced_at = last_review"]),
     ("cards", "origin", ["alter table cards add column origin text"]),  # e.g. 'Alice vs Bob · game 2, move 14'
+    ("cards", "last_severity", ["alter table cards add column last_severity text",  # doubtful / error / blunder
+                                _reclassify_cards]),
 ]
 
 
@@ -107,8 +137,8 @@ def connect(path=DB_PATH):
     conn.executescript(SCHEMA + EXPLANATIONS)
     for table, column, sqls in MIGRATIONS:
         if column not in {r[1] for r in conn.execute(f"pragma table_info({table})")}:
-            for sql in sqls:
-                conn.execute(sql)
+            for step in sqls:
+                step(conn) if callable(step) else conn.execute(step)
     conn.execute("create index if not exists cards_state on cards(user, state, due)")
     conn.commit()
     return conn

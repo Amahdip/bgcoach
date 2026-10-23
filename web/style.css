@@ -12,6 +12,8 @@
   --warn: #a86a00;
   --series: #2a78d6;
   --st-1: #cde2fb; --st-2: #86b6ef; --st-3: #3987e5; --st-4: #1c5cab;
+  /* mistake severity = status palette warning / serious / critical (same in both themes) */
+  --sev-doubtful: #fab219; --sev-error: #ec835a; --sev-blunder: #d03b3b;
 
   --felt: #2f5546;
   --frame: #20372e;
@@ -188,3 +190,18 @@ tr.link:hover td { background: var(--bg); }
 .facts { font-size: 13px; }
 .facts th { vertical-align: bottom; }
 .facts td:first-child { color: var(--ink-2); }
+
+/* mistake severity: always icon/word + colour, never colour alone */
+.verdict.sev-doubtful .icon { background: var(--sev-doubtful); color: #1d1d1b; }
+.verdict.sev-error .icon { background: var(--sev-error); color: #1d1d1b; }
+.verdict.sev-blunder .icon { background: var(--sev-blunder); font-size: 12px; letter-spacing: -2px; }
+.sev { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.sev i, .dot, .legend i.sw { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.dot { width: 7px; height: 7px; vertical-align: 1px; }
+.legend i.sw { border-radius: 3px; width: 10px; height: 10px; }
+.sev.doubtful i, .dot.doubtful, .sw.doubtful, .sevbar .doubtful { background: var(--sev-doubtful); }
+.sev.error i, .dot.error, .sw.error, .sevbar .error { background: var(--sev-error); }
+.sev.blunder i, .dot.blunder, .sw.blunder, .sevbar .blunder { background: var(--sev-blunder); }
+.sev.blunder { color: var(--ink); font-weight: 600; }
+.sevbar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line); min-width: 60px; }
+.sevbar span { display: block; height: 100%; }

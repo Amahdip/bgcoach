@@ -56,12 +56,14 @@ real export fails, add a trimmed copy to `tests/fixtures/` with a test before fi
 first, max `srs.MAX_REVIEWS_PER_DAY`) → queued imports (max `srs.NEW_PER_DAY`). `mixed` (default)
 alternates a card and an unseen position (using `prev`), `review` serves only cards with no caps,
 `new` only unseen positions. The mode is chosen in the header and kept in localStorage.
-Inspect one user's deck (default user is `me`):
+Misses are graded by `srs.severity()` (doubtful ≥ 0.02, error ≥ 0.04, blunder ≥ 0.08);
+`cards.last_severity` holds the grade of the last miss, and `reps < 0` means a blunder still
+needs right answers before it is spaced out. Inspect one user's deck (default user is `me`):
 
 ```bash
 .venv/bin/python - <<'PY'
 import sqlite3; c = sqlite3.connect('data/bgcoach.sqlite'); c.row_factory = sqlite3.Row
-for r in c.execute("select position_id, state, due, interval_d, reps, lapses, round(priority,3) p, origin from cards where user='me' order by due limit 20"):
+for r in c.execute("select position_id, state, last_severity, due, interval_d, reps, lapses, round(priority,3) p, origin from cards where user='me' order by due limit 20"):
     print(dict(r))
 PY
 ```

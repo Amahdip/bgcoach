@@ -263,9 +263,10 @@ function undo() {
 
 function metaHtml(pos) {
   const kinds = { opening: "Opening", middlegame: "Middlegame", backgame: "Back game", "backgame-opp": "Vs. back game", race: "Race", bearoff: "Bear-off" };
+  const was = pos.card?.last_severity ? ` · last time: ${SEV[pos.card.last_severity].label.toLowerCase()}` : "";
   const modeTag = {
-    learning: `<span class="tag review">Missed before · ${pos.card?.lapses}×</span>`,
-    review: `<span class="tag review">Review · missed ${pos.card?.lapses}×</span>`,
+    learning: `<span class="tag review">Missed before · ${pos.card?.lapses}×${was}</span>`,
+    review: `<span class="tag review">Review · missed ${pos.card?.lapses}×${was}</span>`,
     queued: `<span class="tag review">From your match</span>`,
     practice: `<span class="tag">Practice</span>`,
   }[pos.mode] || `<span class="tag new">New</span>`;
@@ -326,6 +327,14 @@ function dueText(card) {
 }
 
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// Mistake severity (thresholds as in gnubg / XG, server/srs.py). Always shown as icon + word.
+const SEV = {
+  doubtful: { label: "Doubtful", icon: "!", range: "0.020–0.040" },
+  error: { label: "Error", icon: "✕", range: "0.040–0.080" },
+  blunder: { label: "Blunder", icon: "✕✕", range: "0.080 or more" },
+};
+const sevOf = (loss) => (loss < 0.02 ? null : loss < 0.04 ? "doubtful" : loss < 0.08 ? "error" : "blunder");
+const sevPill = (sev) => (sev ? `<span class="sev ${sev}"><i></i>${SEV[sev].label}</span>` : "");
 const KINDS = { opening: "Opening", middlegame: "Middlegame", backgame: "Back game", "backgame-opp": "Vs. back game", race: "Race", bearoff: "Bear-off" };
 
 async function submit() {
@@ -342,26 +351,35 @@ async function submit() {
 }
 
 function showResult(r) {
-  const cls = r.grade === "again" ? "bad" : r.grade === "hard" ? "hard" : "good";
-  const head = r.rank === 1
-    ? `<div class="verdict ${cls}"><span class="icon">✓</span>Best move${r.grade === "hard" ? " (slow)" : ""}</div>`
-    : `<div class="verdict bad"><span class="icon">✕</span>Error: <span class="num">${r.eq_loss.toFixed(3)}</span></div>`;
-  const sub = r.rank === 1
+  const sev = r.severity;
+  let head;
+  if (r.rank === 1) head = `<div class="verdict good"><span class="icon">✓</span>Best move${r.grade === "hard" ? " (slow)" : ""}</div>`;
+  else if (!sev) head = `<div class="verdict good"><span class="icon">≈</span>Close to best: <span class="num">${r.eq_loss.toFixed(3)}</span></div>`;
+  else head = `<div class="verdict sev-${sev}"><span class="icon">${SEV[sev].icon}</span>${SEV[sev].label}: <span class="num">${r.eq_loss.toFixed(3)}</span></div>`;
+  let sub = r.rank === 1
     ? `You played <b>${r.chosen}</b>.`
     : `You played <b>${r.chosen}</b> (#${r.rank}). Best was <b>${r.moves[0].text}</b>.`;
+  if (r.rank > 1 && !sev) sub += " Less than 0.020 behind, so it counts as right.";
   let note;
-  if (r.card) {
-    note = r.grade === "again"
-      ? `This position is now in your review deck. It comes back <b>${dueText(r.card)}</b>.`
-      : `Review deck: next time <b>${dueText(r.card)}</b> (${r.card.reps} correct in a row).`;
-  } else note = "Played correctly on the first try, so it won't be scheduled for review.";
+  if (r.card && sev) {
+    const when = `<b>${dueText(r.card)}</b>`;
+    note = {
+      doubtful: `A small mistake: it comes back ${when}.`,
+      error: `This position is in your review deck. It comes back ${when}.`,
+      blunder: `A blunder: it comes back ${when}, and you need to get it right twice in a row before it is spaced out.`,
+    }[sev];
+  } else if (r.card) {
+    note = r.card.reps <= 0
+      ? `Right. One more right answer (<b>${dueText(r.card)}</b>) and this blunder starts being spaced out.`
+      : `Review deck: next time <b>${dueText(r.card)}</b> (${r.card.reps} right in a row).`;
+  } else note = "Played well on the first try, so it won't be scheduled for review.";
   if (r.history.length) {
-    note += `<br>Earlier tries: ` + r.history.map((h) => `${h.move_text} <span class="num">(${h.eq_loss > 0 ? "−" + h.eq_loss.toFixed(3) : "best"})</span>`).join(", ");
+    note += `<br>Earlier tries: ` + r.history.map((h) => `${esc(h.move_text)} <span class="num">(${h.eq_loss > 0 ? "−" + h.eq_loss.toFixed(3) : "best"})</span>`).join(", ");
   }
   let rows = `<li data-i="start" class="start"><span class="rk">↺</span><span class="mv">Start position</span><span></span><span class="ls"><span class="kbd">S</span></span></li>` +
     r.moves.map((m, i) => `<li data-i="${i}" class="${m.rank === r.rank ? "mine" : ""}">
       <span class="rk num">${m.rank}</span><span class="mv">${m.text}</span>
-      <span class="eq num">${fmt(m.equity)}</span><span class="ls num">${m.rank > 1 ? fmt(-m.loss) : ""}</span></li>`).join("");
+      <span class="eq num">${fmt(m.equity)}</span><span class="ls num">${m.rank > 1 ? fmt(-m.loss) : ""}${m.rank > 1 && sevOf(m.loss) ? ` <span class="dot ${sevOf(m.loss)}" title="${SEV[sevOf(m.loss)].label}"></span>` : ""}</span></li>`).join("");
   $("#panel").innerHTML = `${head}<div class="sub">${sub}</div>
     <h2>Engine ranking · gnubg ${r.plies}-ply</h2><ul class="moves">${rows}</ul>
     <div class="card-note">${note}</div>`;
@@ -457,6 +475,7 @@ async function renderProgress() {
     ["Positions played", s.attempts, `${s.positions} in the database`],
     ["Best move", pct(s.best, s.attempts), `${s.best} of ${s.attempts}`],
     ["Avg. error", s.attempts ? (s.avg_loss * 1000).toFixed(1) : "—", "equity × 1000 per move (lower is better)"],
+    ["Blunders", s.severity.blunder, `${pct(s.severity.blunder, s.attempts)} of moves · ${s.severity.error} errors · ${s.severity.doubtful} doubtful`],
     ["Due now", d.due, `${t.reviews} of ${t.max_reviews} reviews done today`],
     ["Review deck", cards, `${d.learned} learned · ${d.queued} queued`],
   ].map(([k, v, sub]) => `<div class="tile"><div class="k">${k}</div><div class="v num">${v}</div><div class="s">${sub}</div></div>`).join("");
@@ -484,29 +503,42 @@ async function renderProgress() {
     <table style="margin-top:14px"><thead><tr><th>Due</th>${days.map((day, i) => `<th class="r">${i ? day.slice(5) : "Today"}</th>`).join("")}</tr></thead>
       <tbody><tr><td>Cards</td>${forecastRow}</tr></tbody></table></div>`;
 
-  const maxN = Math.max(1, ...s.by_kind.map((k) => k.n));
+  // Share of each kind's moves that were doubtful / errors / blunders, as one stacked bar per row.
+  const sevBar = (k) => `<div class="sevbar" title="${k.doubtful} doubtful, ${k.errors} errors, ${k.blunders} blunders of ${k.n} moves">` +
+    [["doubtful", k.doubtful], ["error", k.errors], ["blunder", k.blunders]]
+      .map(([c, n]) => (n ? `<span class="${c}" style="width:${(100 * n) / k.n}%"></span>` : "")).join("") + `</div>`;
   const kindRows = s.by_kind.length ? s.by_kind.map((k) => `<tr>
-      <td>${KINDS[k.kind] || k.kind}</td><td class="r num">${k.n}</td>
-      <td class="r num">${pct(k.best, k.n)}</td><td class="r num">${(k.loss * 1000).toFixed(1)}</td>
-      <td style="width:30%"><div class="bar-bg"><div class="bar" style="width:${(100 * k.n) / maxN}%"></div></div></td></tr>`).join("")
-    : `<tr><td colspan="5" class="empty">No positions played yet.</td></tr>`;
+      <td>${KINDS[k.kind] || k.kind}</td><td class="r num">${k.n}</td><td class="r num">${pct(k.best, k.n)}</td>
+      <td class="r num">${k.doubtful}</td><td class="r num">${k.errors}</td><td class="r num">${k.blunders}</td>
+      <td class="r num">${(k.loss * 1000).toFixed(1)}</td><td style="width:22%">${sevBar(k)}</td></tr>`).join("")
+    : `<tr><td colspan="8" class="empty">No positions played yet.</td></tr>`;
+  const sevLegend = `<div class="legend">${Object.entries(SEV).map(([c, v]) =>
+    `<span><i class="sw ${c}"></i>${v.label} <span class="num" style="color:var(--ink-3)">${v.range}</span></span>`).join("")}</div>`;
 
   const mistakeRows = s.mistakes.length ? s.mistakes.map((m) => `<tr class="link" data-id="${m.position_id}">
       <td class="num">${m.created_at.slice(5, 16).replace("T", " ")}${m.source === "import" ? ` <span class="tag src">match</span>` : ""}</td>
       <td>${KINDS[m.kind] || m.kind}</td><td class="num">${m.dice}</td><td><code>${esc(m.move_text)}</code></td>
-      <td class="r num">${m.eq_loss.toFixed(3)}</td><td class="num">${m.due ? dueText(m) : ""}</td></tr>`).join("")
-    : `<tr><td colspan="6" class="empty">No mistakes yet — keep playing.</td></tr>`;
+      <td class="r num">${m.eq_loss.toFixed(3)}</td><td>${sevPill(m.severity)}</td><td class="num">${m.due ? dueText(m) : ""}</td></tr>`).join("")
+    : `<tr><td colspan="7" class="empty">No mistakes yet — keep playing.</td></tr>`;
 
   $("#progress").innerHTML = `<div class="tiles">${tiles}</div>${deckBox}
-    <div class="box"><h3>Average error per day</h3><p class="cap">Training positions only: equity lost per move × 1000, last 30 days. Lower is better.</p>
-      <div class="chart" id="chart"></div></div>
     <div class="grid2">
-      <div class="box"><h3>By position type</h3><p class="cap">Where your training errors come from.</p>
-        <table><thead><tr><th>Type</th><th class="r">Played</th><th class="r">Best</th><th class="r">Avg. error</th><th></th></tr></thead><tbody>${kindRows}</tbody></table></div>
-      <div class="box"><h3>Recent mistakes</h3><p class="cap">Click a row to practise that position again.</p>
-        <table><thead><tr><th>When (UTC)</th><th>Type</th><th>Roll</th><th>You played</th><th class="r">Error</th><th>Next review</th></tr></thead><tbody>${mistakeRows}</tbody></table></div>
-    </div>`;
-  drawDaily(s.daily);
+      <div class="box"><h3>Average error per day</h3><p class="cap">Training positions: equity lost per move × 1000, last 30 days. Lower is better.</p>
+        <div class="chart" id="chart"></div></div>
+      <div class="box"><h3>Blunders per 100 moves</h3><p class="cap">Moves that lost 0.080 or more, per day. The number to get down.</p>
+        <div class="chart" id="chart-blunders"></div></div>
+    </div>
+    <div class="box"><h3>Mistakes by position type</h3><p class="cap">Where your mistakes come from, and how bad they are.</p>
+      <table><thead><tr><th>Type</th><th class="r">Played</th><th class="r">Best</th><th class="r">Doubtful</th><th class="r">Errors</th>
+        <th class="r">Blunders</th><th class="r">Avg. error</th><th>Share of moves</th></tr></thead><tbody>${kindRows}</tbody></table>
+      ${sevLegend}</div>
+    <div class="box"><h3>Recent mistakes</h3><p class="cap">Click a row to practise that position again.</p>
+      <table><thead><tr><th>When (UTC)</th><th>Type</th><th>Roll</th><th>You played</th><th class="r">Error</th><th></th><th>Next review</th></tr></thead><tbody>${mistakeRows}</tbody></table></div>`;
+  drawDaily($("#chart"), s.daily, (d) => d.loss * 1000,
+    (d) => `Avg. error ${(d.loss * 1000).toFixed(1)} · ${d.n} played · ${Math.round((100 * d.best) / d.n)}% best`);
+  drawDaily($("#chart-blunders"), s.daily, (d) => (100 * d.blunders) / d.n,
+    (d) => `${d.blunders} blunder${d.blunders === 1 ? "" : "s"} in ${d.n} moves · ${d.errors} errors · ${d.doubtful} doubtful`,
+    "var(--sev-blunder)", 5);
   bindPractice($("#progress"));
 }
 
@@ -579,15 +611,15 @@ async function runImport() {
   $("#import-step").innerHTML = "";
   const rows = r.mistakes.map((m) => `<tr class="link" data-id="${m.position_id}">
       <td class="num">${m.game}</td><td class="num">${m.move}</td><td>${KINDS[m.kind] || m.kind}</td><td class="num">${m.dice}</td>
-      <td><code>${esc(m.played)}</code></td><td><code>${esc(m.best)}</code></td><td class="r num">${m.loss.toFixed(3)}</td></tr>`).join("");
+      <td><code>${esc(m.played)}</code></td><td><code>${esc(m.best)}</code></td><td class="r num">${m.loss.toFixed(3)}</td><td>${sevPill(m.severity)}</td></tr>`).join("");
   $("#import-result").innerHTML = `<div class="tiles">
       <div class="tile"><div class="k">Your moves</div><div class="v num">${r.decisions}</div><div class="s">checker plays with a real choice</div></div>
-      <div class="tile"><div class="k">Mistakes</div><div class="v num">${r.mistakes.length}</div><div class="s">lost 0.020 or more · now queued for review</div></div>
+      <div class="tile"><div class="k">Mistakes</div><div class="v num">${r.mistakes.length}</div><div class="s">${r.by_severity.blunder} blunders · ${r.by_severity.error} errors · ${r.by_severity.doubtful} doubtful — queued for review</div></div>
       <div class="tile"><div class="k">Error rate</div><div class="v num">${r.error_rate.toFixed(1)}</div><div class="s">equity × 1000 per move</div></div>
     </div>
     <div class="box"><h3>Your mistakes in ${esc(r.players[0])} vs ${esc(r.players[1])}</h3>
       <p class="cap">Biggest first. They come up in Train, up to ${(await api("/api/stats")).today.max_new} a day, before fresh positions. Click a row to look at one now.</p>
-      ${r.mistakes.length ? `<table><thead><tr><th>Game</th><th>Move</th><th>Type</th><th>Roll</th><th>You played</th><th>Best</th><th class="r">Error</th></tr></thead><tbody>${rows}</tbody></table>
+      ${r.mistakes.length ? `<table><thead><tr><th>Game</th><th>Move</th><th>Type</th><th>Roll</th><th>You played</th><th>Best</th><th class="r">Error</th><th></th></tr></thead><tbody>${rows}</tbody></table>
         <p style="margin-top:14px"><button class="primary" id="start-review">Start reviewing →</button></p>`
         : `<div class="empty">No mistakes of 0.020 or more — nicely played.</div>`}</div>`;
   bindPractice($("#import-result"));
@@ -602,12 +634,12 @@ drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.ad
 drop.addEventListener("dragleave", () => drop.classList.remove("over"));
 drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); pickFile(e.dataTransfer.files[0]); });
 
-function drawDaily(daily) {
-  const el = $("#chart");
+// One bar per day. value(d) -> number, tipText(d) -> HTML, color: CSS colour, floor: min axis top.
+function drawDaily(el, daily, value, tipText, color = "var(--series)", floor = 10) {
   if (!daily.length) { el.innerHTML = `<div class="empty">Play some positions to see your trend.</div>`; return; }
   const W = 800, H = 180, padL = 36, padB = 22, padT = 8;
-  const vals = daily.map((d) => d.loss * 1000);
-  const max = Math.max(10, ...vals) * 1.1;
+  const vals = daily.map(value);
+  const max = Math.max(floor, ...vals) * 1.1;
   const bw = Math.min(28, (W - padL) / daily.length - 4);
   const step = (W - padL) / daily.length;
   const y = (v) => H - padB - (v / max) * (H - padB - padT);
@@ -618,7 +650,7 @@ function drawDaily(daily) {
   }
   daily.forEach((d, i) => {
     const x = padL + i * step + (step - bw) / 2, v = vals[i], top = y(v), h = H - padB - top;
-    s += `<path d="M${x},${H - padB} V${top + Math.min(4, h)} q0,-4 4,-4 h${bw - 8} q4,0 4,4 V${H - padB} Z" style="fill:var(--series)"/>`;
+    if (v > 0) s += `<path d="M${x},${H - padB} V${top + Math.min(4, h)} q0,-4 4,-4 h${bw - 8} q4,0 4,4 V${H - padB} Z" style="fill:${color}"/>`;
     s += `<rect class="hov" data-i="${i}" x="${padL + i * step}" y="${padT}" width="${step}" height="${H - padB - padT}" fill="transparent"/>`;
     if (daily.length <= 12 || i % Math.ceil(daily.length / 8) === 0)
       s += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle" style="font:11px ui-sans-serif;fill:var(--ink-3)">${d.day.slice(5)}</text>`;
@@ -628,7 +660,7 @@ function drawDaily(daily) {
   el.querySelectorAll(".hov").forEach((r) => {
     r.addEventListener("mouseenter", () => {
       const d = daily[+r.dataset.i], box = el.getBoundingClientRect(), rb = r.getBoundingClientRect();
-      tip.innerHTML = `<b>${d.day}</b><br>Avg. error ${(d.loss * 1000).toFixed(1)} · ${d.n} played · ${Math.round((100 * d.best) / d.n)}% best`;
+      tip.innerHTML = `<b>${d.day}</b><br>${tipText(d)}`;
       tip.style.left = rb.left - box.left + rb.width / 2 + "px";
       tip.style.top = y(vals[+r.dataset.i]) * (box.height / H) + "px";
       tip.hidden = false;

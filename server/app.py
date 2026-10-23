@@ -57,7 +57,7 @@ def position_payload(row, mode, card=None):
         # user has finished a legal play. No equities until they answer.
         "legal": [result_of(board, m["move"]) for m in analysis],
         "mode": mode,
-        "card": card and {k: card[k] for k in ("due", "interval_d", "reps", "lapses", "state", "origin")},
+        "card": card and {k: card[k] for k in ("due", "interval_d", "reps", "lapses", "state", "origin", "last_severity")},
     }
 
 
@@ -190,7 +190,8 @@ async def answer(a: Answer, x_user: Optional[str] = Header(None)):
         best = analysis[0]["equity"]
         rank = idx + 1
         eq_loss = max(0.0, best - chosen["equity"])
-        g = srs.grade(rank, a.ms)
+        g = srs.grade(rank, a.ms, eq_loss)
+        sev = srs.severity(eq_loss) if rank > 1 else None
 
         card = conn.execute(
             "select * from cards where user = ? and position_id = ?", [user, a.position_id]
@@ -201,16 +202,17 @@ async def answer(a: Answer, x_user: Optional[str] = Header(None)):
         if updated:
             conn.execute(
                 """insert into cards (user, position_id, due, interval_d, ease, reps, lapses, last_review,
-                                      state, priority, introduced_at)
-                   values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                      state, priority, introduced_at, last_severity)
+                   values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    on conflict(user, position_id) do update set
                    due = excluded.due, interval_d = excluded.interval_d, ease = excluded.ease,
                    reps = excluded.reps, lapses = excluded.lapses, last_review = excluded.last_review,
                    state = excluded.state, priority = max(cards.priority, excluded.priority),
-                   introduced_at = coalesce(cards.introduced_at, excluded.introduced_at)""",
+                   introduced_at = coalesce(cards.introduced_at, excluded.introduced_at),
+                   last_severity = coalesce(excluded.last_severity, cards.last_severity)""",
                 [user, a.position_id, updated["due"], updated["interval_d"], updated["ease"],
                  updated["reps"], updated["lapses"], updated["last_review"], updated["state"],
-                 eq_loss, updated["last_review"]],
+                 eq_loss, updated["last_review"], sev],
             )
         conn.execute(
             """insert into attempts (user, position_id, move, move_text, eq_loss, rank, grade, was_review, ms)
@@ -229,6 +231,7 @@ async def answer(a: Answer, x_user: Optional[str] = Header(None)):
             "rank": rank,
             "eq_loss": eq_loss,
             "grade": g,
+            "severity": sev,
             "chosen": chosen["text"],
             "moves": [
                 {"rank": i + 1, "text": m["text"], "equity": m["equity"], "loss": best - m["equity"],
@@ -239,6 +242,7 @@ async def answer(a: Answer, x_user: Optional[str] = Header(None)):
             ],
             "chosen_index": idx,
             "card": updated and {k: updated[k] for k in ("due", "interval_d", "reps", "lapses", "state")},
+            "thresholds": {"doubtful": srs.DOUBTFUL, "error": srs.ERROR, "blunder": srs.BLUNDER},
             "history": [dict(r) for r in previous],
             "plies": row["plies"],
         }
@@ -251,14 +255,16 @@ async def stats(x_user: Optional[str] = Header(None)):
         q = lambda sql, *args: conn.execute(sql, [user, *args])
         now = srs.iso(srs.now())
         # Training numbers only; mistakes found in imported matches are listed separately.
-        tot = q("""select count(*) n, coalesce(sum(rank = 1), 0) best, coalesce(avg(eq_loss), 0) loss
-                   from attempts where user = ? and source = 'train'""").fetchone()
-        by_kind = q("""select p.kind, count(*) n, sum(a.rank = 1) best, avg(a.eq_loss) loss
-                       from attempts a join positions p on p.id = a.position_id
-                       where a.user = ? and a.source = 'train' group by p.kind order by n desc""").fetchall()
-        daily = q("""select date(created_at) day, count(*) n, sum(rank = 1) best, avg(eq_loss) loss
-                     from attempts where user = ? and source = 'train' and created_at >= date('now', '-30 days')
-                     group by day order by day""").fetchall()
+        sev = srs.severity_counts_sql("eq_loss")
+        tot = q(f"""select count(*) n, coalesce(sum(rank = 1), 0) best, coalesce(avg(eq_loss), 0) loss, {sev}
+                    from attempts where user = ? and source = 'train'""").fetchone()
+        by_kind = q(f"""select p.kind, count(*) n, sum(a.rank = 1) best, avg(a.eq_loss) loss,
+                               {srs.severity_counts_sql("a.eq_loss", "a.rank")}
+                        from attempts a join positions p on p.id = a.position_id
+                        where a.user = ? and a.source = 'train' group by p.kind order by n desc""").fetchall()
+        daily = q(f"""select date(created_at) day, count(*) n, sum(rank = 1) best, avg(eq_loss) loss, {sev}
+                      from attempts where user = ? and source = 'train' and created_at >= date('now', '-30 days')
+                      group by day order by day""").fetchall()
         deck = conn.execute(
             """select
                  coalesce(sum(state = 'new'), 0) queued,
@@ -272,17 +278,18 @@ async def stats(x_user: Optional[str] = Header(None)):
                         where user = ? and state != 'new' and date(due) <= date('now', '+6 days')
                         group by day order by day""").fetchall()
         reviews_today, introduced_today = today_counts(user)
-        mistakes = q("""select a.position_id, a.move_text, a.eq_loss, a.created_at, a.source, p.kind, p.dice,
-                               c.due, c.lapses, c.state, c.origin
+        mistakes = q(f"""select a.position_id, a.move_text, a.eq_loss, a.created_at, a.source, p.kind, p.dice,
+                               c.due, c.lapses, c.state, c.origin, {srs.severity_sql("a.eq_loss")} severity
                         from attempts a join positions p on p.id = a.position_id
                         left join cards c on c.user = a.user and c.position_id = a.position_id
-                        where a.user = ? and a.rank > 1
+                        where a.user = ? and a.rank > 1 and a.eq_loss >= {srs.DOUBTFUL}
                         order by a.id desc limit 25""").fetchall()
         npos = conn.execute("select count(*) from positions").fetchone()[0]
         return {
             "attempts": tot["n"],
             "best": tot["best"],
             "avg_loss": tot["loss"],
+            "severity": {"doubtful": tot["doubtful"], "error": tot["errors"], "blunder": tot["blunders"]},
             "positions": npos,
             "deck": dict(deck),
             "today": {"reviews": reviews_today, "max_reviews": srs.MAX_REVIEWS_PER_DAY,
